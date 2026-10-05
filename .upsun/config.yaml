@@ -1,0 +1,57 @@
+applications:
+  # JSON API: PHP, no framework. Stores pizzas in PostgreSQL.
+  api:
+    source:
+      root: "api"
+    type: "php:8.4"
+    runtime:
+      extensions:
+        - pdo_pgsql
+    build:
+      flavor: none
+    hooks:
+      build: |
+        set -e
+        composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+    relationships:
+      # Db.php looks up the "postgresql" relationship in PLATFORM_RELATIONSHIPS.
+      postgresql: "pizzadb:postgresql"
+    web:
+      locations:
+        "/":
+          root: ""
+          passthru: "/index.php"
+          allow: false
+
+  # UI: Node + Express. Serves static files and proxies /api to the PHP app.
+  frontend:
+    source:
+      root: "frontend"
+    type: "nodejs:22"
+    build:
+      flavor: none
+    hooks:
+      build: |
+        set -e
+        npm ci --omit=dev
+    relationships:
+      # server.js looks up the "api" relationship to find the PHP app.
+      api: "api:http"
+    web:
+      commands:
+        start: "node server.js"
+
+services:
+  pizzadb:
+    type: "postgresql:17"
+
+routes:
+  "https://{default}/":
+    type: upstream
+    upstream: "frontend:http"
+  "https://www.{default}/":
+    type: redirect
+    to: "https://{default}/"
+  "https://api.{default}/":
+    type: upstream
+    upstream: "api:http"
