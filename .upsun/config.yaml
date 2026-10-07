@@ -1,0 +1,71 @@
+applications:
+  api:
+    source:
+      root: api
+    type: 'php:8.4'
+    # No third-party dependencies; index.php provides the existing autoloader.
+    build:
+      flavor: none
+    runtime:
+      extensions:
+        - pdo_pgsql
+    relationships:
+      postgresql:
+        service: postgresql
+        endpoint: postgresql
+    web:
+      locations:
+        '/':
+          root: '.'
+          passthru: '/index.php'
+          index:
+            - index.php
+          # Only the front controller is public, not src/ or composer.json.
+          allow: false
+          scripts: false
+          rules:
+            '^/index\.php$':
+              allow: true
+              scripts: true
+
+  frontend:
+    source:
+      root: frontend
+    type: 'nodejs:22'
+    build:
+      flavor: none
+    hooks:
+      build: |
+        set -eu
+        npm ci --omit=dev
+    variables:
+      env:
+        NODE_ENV: production
+    relationships:
+      api:
+        service: api
+        endpoint: http
+    web:
+      upstream:
+        socket_family: tcp
+        protocol: http
+      commands:
+        start: npm start
+      locations:
+        '/':
+          # Express serves public/ and proxies /api; never serve source files.
+          passthru: true
+          scripts: false
+          allow: false
+
+services:
+  postgresql:
+    type: 'postgresql:17'
+
+routes:
+  'https://{default}/':
+    type: upstream
+    upstream: 'frontend:http'
+  'https://api.{default}/':
+    type: upstream
+    upstream: 'api:http'
